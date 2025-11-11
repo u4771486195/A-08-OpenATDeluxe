@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OpenATDeluxe Architecture</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #111827; color: #d1d5db; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .header { background-color: #1f2937; padding: 1rem 2rem; border-bottom: 1px solid #374151; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    h1 { color: white; margin: 0; }
+    .controls { display: flex; align-items: center; gap: 20px; }
+    .legend { display: flex; gap: 20px; font-size: 12px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .main-container { display: flex; flex-grow: 1; }
+    .panel { min-width: 150px; height: 100%; display: flex; flex-direction: column; position: relative; }
+    .panel:nth-child(1) { flex: 0 0 150px; } /* Empty Left Panel */
+    .panel:nth-child(3) { flex: 1 1 100%; }   /* Center Panel */
+    .panel:nth-child(5) { flex: 0 0 150px; } /* Empty Right Panel */
+    .splitter { width: 6px; background-color: #374151; cursor: col-resize; flex-shrink: 0; z-index: 100; }
+    .splitter:hover { background-color: #4b5563; }
+    .panel-header { padding: 1rem; text-align: center; border-bottom: 1px solid #374151; background-color: #1f2937; }
+    .panel-header h2 { margin: 0; font-size: 1.5rem; }
+    .header-legacy { color: #fca5a5; }
+    .header-engine { color: #86efac; }
+    .header-future { color: #c4b5fd; }
+    .canvas { position: relative; width: 100%; flex-grow: 1; overflow: hidden; cursor: grab; }
+    .canvas:active { cursor: grabbing; }
+    .connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .transform-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; z-index: 2; }
+    .node { position: absolute; border: 3px solid #4b5563; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); font-family: monospace; width: 280px; cursor: move; z-index: 10; user-select: none; padding-top: 30px; }
+    .node h3 { padding: 8px 12px 8px 12px; margin: 0; border-bottom: 1px solid rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; font-size: 14px; color: white; word-break: break-all; }
+    .node h3 .path { font-size: 0.8em; color: #9ca3af; display: block; font-weight: normal; }
+    .node ul { list-style: none; padding: 0; margin: 0; }
+    .node li { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; position: relative; }
+    .node li:last-child { border-bottom: none; }
+    .node .col-name { font-weight: 500; }
+    .node .col-type { margin-left: auto; color: #9ca3af; }
+    .db-node { background-color: rgba(196, 181, 253, 0.15); border-color: #a78bfa; }
+    .db-node h3 { background-color: #8b5cf6; }
+    .ui-node { background-color: rgba(191, 219, 254, 0.15); border-color: #60a5fa; }
+    .ui-node h3 { background-color: #3b82f6; }
+    .code-node { background-color: rgba(134, 239, 172, 0.1); border-color: #4ade80; }
+    .code-node h3 { background-color: #22c55e; }
+    .service-node { background-color: rgba(252, 165, 165, 0.1); border-color: #f87171; }
+    .service-node h3 { background-color: #ef4444; }
+    .icon-display { position: absolute; top: -32px; left: 50%; transform: translateX(-50%); font-size: 64px; z-index: 12; pointer-events: none; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Full Stack Analysis - OpenATDeluxe Architecture</h1>
+    <div class="controls">
+        <div class="legend">
+             <div class="legend-item"><svg width="10" height="10" style="background:#3b82f6; border-radius:3px;"></svg> UI</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#22c55e; border-radius:3px;"></svg> Code</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#8b5cf6; border-radius:3px;"></svg> Data/Schema</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#ef4444; border-radius:3px;"></svg> Service</div>
+        </div>
+    </div>
+</div>
+
+<div class="main-container">
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-legacy"></h2></div>
+        <div id="canvas-legacy" class="canvas"><svg id="connections-legacy" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-engine">OpenATDeluxe Full Architecture</h2></div>
+        <div id="canvas-engine" class="canvas"><svg id="connections-engine" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-future"></h2></div>
+        <div id="canvas-future" class="canvas"><svg id="connections-future" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+</div>
+
+<script>
+// ===================================================================================
+//
+//  MASTER DATA SOURCES
+//
+// ===================================================================================
+/*
+    ARCHITECTURAL INSIGHTS FOR FUTURE AI ANALYSIS:
+    This file provides a comprehensive architectural visualization of the OpenATDeluxe game engine, a remake of "Airline Tycoon Deluxe" built on Godot using C#. The architecture is defined by a distinct separation between the modern game engine and a legacy asset ingestion pipeline.
+
+    **Overall Architectural Philosophy:**
+    The project's design is pragmatic, leveraging the strengths of the Godot engine's scene system while solving a critical asset dependency issue. Due to copyright, original game assets cannot be redistributed. The solution is a custom **Build Manager**, a C# tool integrated into the Godot editor (`DockInterface.cs`, `ManageTool.cs`). This tool requires the user to provide a path to their installation of the original "Airline Tycoon Deluxe." It then extracts, decompresses, and converts proprietary legacy formats (`.gli`, `.dat`, `.csv`) into modern, engine-readable resources. This approach keeps the open-source codebase legally clean while allowing for a faithful remake. A crucial part of this process is the `AirportViewLoader.cs`, which procedurally generates dozens of small `.tscn` scene files based on the original game's level data, which are then assembled into the main airport scene.
+
+    **Key File Types and Their Roles:**
+    - **C# Scripts (`.cs`):** The core of the project's logic. This includes the in-editor **Build Manager** toolset, the runtime game logic attached to scenes (e.g., `Staircase.cs`, `MouseArea.cs`), and major gameplay systems like `RoomManager.cs` and `DialogueSystem.cs`.
+    - **Godot Scenes (`.tscn`):** These text-based files define the hierarchy and properties of game objects. The project makes extensive use of scene instancing. The main `RoomAirport.tscn` is a large composite scene built from many smaller, pre-generated scenes located in `scenes/airportPartsImport/`. "Room" scenes like `RoomBank.tscn` represent self-contained locations.
+    - **Legacy Data (`.dat`, `.csvs`):** The `AirportViewLoader.cs` reads `.dat` files for object placement (`x`, `y`, `z-index`) and a decrypted `brick.csvs` file to map object IDs to their corresponding sprite names and properties. Similarly, `ClanCSVFile.cs` reads `clan.csv` to define character animations.
+    - **Project & Config Files (`.godot`, `.cfg`):** The `project.godot` file is the heart of the Godot project, defining autoloads (singletons), input maps, display settings, and the main scene to launch.
+    - **GDScript (`.gd`):** While C# is dominant, the project utilizes GDScript for a custom MIDI player addon, demonstrating a polyglot approach.
+
+    **The Data Flow Pipeline:**
+    1.  **Initial Setup (First-time run):**
+        *   The user runs the **Build Manager** from the Godot editor.
+        *   `ATDGameLoader.cs` prompts for the path to the original "Airline Tycoon Deluxe" installation.
+        *   `ATDataLoader.cs` reads legacy `.gli` files, extracts images, and saves them as Godot-native `.res` files in `res://Images/`.
+        *   `AirportViewLoader.cs` reads layout data from legacy `.dat` files and sprite metadata from `brick.csvs`. It then programmatically generates dozens of `.tscn` files in `scenes/airportPartsImport/`, effectively rebuilding the airport layout as Godot scenes.
+    2.  **Game Execution:**
+        *   The game launches from `load.tscn`, running `ATDGameLoader.cs`. This initializes systems, including loading `clan.csv` for animations via `ClanCSVFile.cs` and music files.
+        *   The scene changes to `base.tscn`, which contains the main UI and the `RoomManager`.
+        *   `RoomManager.cs` loads the initial `RoomMainMenu.tscn`.
+    .
+    3.  **Gameplay Loop:**
+        *   Clicking "Free Game" in `MenuScene.cs` calls `RoomManager.ChangeRoom("RoomAirport", true)`.
+        *   `RoomManager` instances `RoomAirport.tscn`. This scene, in turn, instances all the smaller, pre-generated airport part scenes.
+        *   The `PlayerCharacter.cs` is created. Player clicks are translated into pathfinding goals using Godot's `Navigation2D` system.
+        *   Clicking on a door (`MouseAreaRoom.cs`) calls `RoomManager.ChangeRoom(...)` to load a new room scene (e.g., "RoomBank").
+        *   Inside a room, clicking a character triggers the `DialogueSystem.cs`, which takes over input, displays conversation windows (`DialogueWindow.cs`), and plays voice lines.
+
+    This two-stage process (a one-time, build-time asset conversion followed by a modular, scene-based runtime) is the defining characteristic of the OpenATDeluxe architecture.
+*/
+
+const schemaCombined = {
+    tables: [
+        // LEGACY ASSETS & TOOLS
+        { id: 1, name: "Airline Tycoon Deluxe", path: "(User's Local Installation)", nodeType: "service", pos: { x: 50, y: 50 }, icon: "💿", columns: [ { name: "Proprietary Game Files" } ] },
+        { id: 2, name: ".gli Graphics Archive", path: "data/gl*.gli", nodeType: "db", pos: { x: 50, y: 350 }, icon: "📦", columns: [ { name: "Image Data (RGB565)" } ] },
+        { id: 3, name: "Level Layout Data", path: "misc/*.dat", nodeType: "db", pos: { x: 50, y: 650 }, icon: "🗺️", columns: [ { name: "Sprite ID, X, Y, Z" } ] },
+        { id: 4, name: "Sprite Metadata", path: "data/brick.csvs", nodeType: "db", pos: { x: 50, y: 950 }, icon: "📝", columns: [ { name: "ID, Filename, Offsets" } ] },
+        { id: 5, name: "Character Animations Data", path: "data/clan.csv", nodeType: "db", pos: { x: 50, y: 1250 }, icon: "🏃", columns: [ { name: "ID, Name, Animation States" } ] },
+        { id: 6, name: "xtRLE.py", path: "/xtRLE.py", nodeType: "code", pos: { x: 50, y: 1550 }, icon: "🐍", columns: [ { name: "decompress/decrypt" } ] },
+
+        // BUILD-TIME INGESTION
+        { id: 101, name: "ATDGameLoader.cs", path: "src/", nodeType: "code", pos: { x: 450, y: 50 }, icon: " C# ", columns: [ { name: "IsOriginalGamePath()" }, { name: "LoadFiles()" } ] },
+        { id: 102, name: "ATDataLoader.cs", path: "src/", nodeType: "code", pos: { x: 450, y: 350 }, icon: " C# ", columns: [ { name: "LoadImageData()" }, { name: "CreateImageResources()" } ] },
+        { id: 103, name: "GFXLibrary.cs", path: "src/", nodeType: "code", pos: { x: 450, y: 650 }, icon: " C# ", columns: [ { name: "GetFilesInLibrary()" }, { name: "FillFileData()" } ] },
+        { id: 104, name: "AirportViewLoader.cs", path: "src/", nodeType: "code", pos: { x: 450, y: 950 }, icon: " C# ", columns: [ { name: "PrepareBricks()" }, { name: "LoadLevelFile()" }, { name: "ResourceSaver.Save()" } ] },
+        { id: 105, name: "ClanCSVFile.cs", path: "src/", nodeType: "code", pos: { x: 450, y: 1250 }, icon: " C# ", columns: [ { name: "LoadCSVData()" }, { name: "GetAnimationData()" } ] },
+        { id: 106, name: "Converted Image Assets", path: "res://Images/**/*.res", nodeType: "service", pos: { x: 450, y: 1550 }, icon: "🖼️", columns: [ { name: "(Generated by ATDataLoader)" } ] },
+        { id: 107, name: "Generated Airport Scenes", path: "res://scenes/airportPartsImport/", nodeType: "ui", pos: { x: 450, y: 1850 }, icon: "🧩", columns: [ { name: "*.tscn" }, { name: "(Generated by AirportViewLoader)" } ] },
+
+        // RUNTIME - CORE SYSTEMS
+        { id: 201, name: "GameController.cs", path: "src/", nodeType: "code", pos: { x: 850, y: 50 }, icon: " C# ", columns: [ { name: "_UnhandledInput()" }, { name: "TimeScale" } ] },
+        { id: 202, name: "RoomManager.cs", path: "src/", nodeType: "code", pos: { x: 850, y: 350 }, icon: " C# ", columns: [ { name: "ChangeRoom()" }, { name: "GetRoomInstance()" } ] },
+        { id: 203, name: "DialogueSystem.cs", path: "src/Speech/", nodeType: "code", pos: { x: 850, y: 650 }, icon: " C# ", columns: [ { name: "StartDialogue()" }, { name: "PrepareTelephoneCall()" } ] },
+        { id: 204, name: "InteractionLayerManager.cs", path: "src/InteractionLayerSystem/", nodeType: "code", pos: { x: 850, y: 950 }, icon: " C# ", columns: [ { name: "DisableAllLayersButOne()" }, { name: "IsLayerDisabled()" } ] },
+        { id: 205, name: "MusicController.cs", path: "src/", nodeType: "code", pos: { x: 850, y: 1250 }, icon: " C# ", columns: [ { name: "SetSong()" } ] },
+        { id: 206, name: "MidiPlayer.gd", path: "addons/midi/", nodeType: "code", pos: { x: 850, y: 1550 }, icon: " GD ", columns: [ { name: "play()" } ] },
+
+        // RUNTIME - GAMEPLAY SCENES & LOGIC
+        { id: 301, name: "RoomAirport.tscn", path: "scenes/rooms/", nodeType: "ui", pos: { x: 1250, y: 50 }, icon: "✈️", columns: [ { name: "Instances -> airportPartsImport" } ] },
+        { id: 302, name: "Room Scenes", path: "scenes/rooms/", nodeType: "ui", pos: { x: 1250, y: 350 }, icon: "🚪", columns: [ { name: "RoomBank.tscn" }, { name: "RoomCafe.tscn" }, { name: "RoomOffice.tscn" } ] },
+        { id: 303, name: "MenuScene.cs", path: "src/", nodeType: "code", pos: { x: 1250, y: 650 }, icon: " C# ", columns: [ { name: "ChangeScene(IBaseMenu)" } ] },
+        { id: 304, name: "MouseAreaRoom.cs", path: "src/", nodeType: "code", pos: { x: 1250, y: 950 }, icon: " C# ", columns: [ { name: "OnClick() -> RoomManager" } ] },
+        { id: 305, name: "DialogueWindow.cs", path: "src/Speech/", nodeType: "ui", pos: { x: 1250, y: 1250 }, icon: "💬", columns: [ { name: "PrepareBubbleHeadText()" } ] },
+        
+        // RUNTIME - CHARACTERS & NAVIGATION
+        { id: 401, name: "PlayerCharacter.cs", path: "src/Characters/", nodeType: "code", pos: { x: 1650, y: 50 }, icon: " C# ", columns: [ { name: "Inherits -> BaseCharacter" } ] },
+        { id: 402, name: "BaseCharacter.cs", path: "src/Characters/", nodeType: "code", pos: { x: 1650, y: 350 }, icon: " C# ", columns: [ { name: "SetPath()" }, { name: "MoveOnPath()" } ] },
+        { id: 403, name: "AnimationData.cs", path: "src/Characters/", nodeType: "db", pos: { x: 1650, y: 650 }, icon: "📝", columns: [ { name: "Dictionary<AnimState, Textures>" } ] },
+        { id: 404, name: "NavigationController.cs", path: "src/Characters/", nodeType: "code", pos: { x: 1650, y: 950 }, icon: " C# ", columns: [ { name: "(Wrapper for Godot Navigation)" } ] },
+        { id: 405, name: "Navigation2D Node", path: "(Godot Engine)", nodeType: "service", pos: { x: 1650, y: 1250 }, icon: "🗺️", columns: [ { name: "GetSimplePath()" } ] }
+    ],
+    relationships: [
+        // Build-Time: Asset Extraction
+        { from: { table: "ATDGameLoader.cs" }, to: { table: "Airline Tycoon Deluxe" }, type: "read" },
+        { from: { table: "ATDGameLoader.cs" }, to: { table: "ATDataLoader.cs" }, type: "flow" },
+        { from: { table: "ATDataLoader.cs" }, to: { table: "GFXLibrary.cs" }, type: "flow" },
+        { from: { table: "GFXLibrary.cs" }, to: { table: ".gli Graphics Archive" }, type: "read" },
+        { from: { table: "ATDataLoader.cs" }, to: { table: "Converted Image Assets" }, type: "write" },
+        
+        // Build-Time: Scene Generation
+        { from: { table: "AirportViewLoader.cs" }, to: { table: "Level Layout Data" }, type: "read" },
+        { from: { table: "AirportViewLoader.cs" }, to: { table: "Sprite Metadata" }, type: "read" },
+        { from: { table: "AirportViewLoader.cs" }, to: { table: "Converted Image Assets" }, type: "read" },
+        { from: { table: "AirportViewLoader.cs" }, to: { table: "Generated Airport Scenes" }, type: "write" },
+        
+        // Build-Time: Character Animation Data
+        { from: { table: "ClanCSVFile.cs" }, to: { table: "Character Animations Data" }, type: "read" },
+        { from: { table: "ClanCSVFile.cs" }, to: { table: "AnimationData.cs" }, type: "write" },
+
+        // Runtime: Scene Loading & Management
+        { from: { table: "MenuScene.cs" }, to: { table: "RoomManager.cs" }, type: "flow" },
+        { from: { table: "MouseAreaRoom.cs" }, to: { table: "RoomManager.cs" }, type: "flow" },
+        { from: { table: "RoomManager.cs" }, to: { table: "RoomAirport.tscn" }, type: "flow" },
+        { from: { table: "RoomManager.cs" }, to: { table: "Room Scenes" }, type: "flow" },
+        { from: { table: "RoomAirport.tscn" }, to: { table: "Generated Airport Scenes" }, type: "read" },
+        
+        // Runtime: Character & Navigation
+        { from: { table: "PlayerCharacter.cs" }, to: { table: "BaseCharacter.cs" }, type: "flow" },
+        { from: { table: "BaseCharacter.cs" }, to: { table: "AnimationData.cs" }, type: "read" },
+        { from: { table: "BaseCharacter.cs" }, to: { table: "NavigationController.cs" }, type: "flow" },
+        { from: { table: "NavigationController.cs" }, to: { table: "Navigation2D Node" }, type: "flow" },
+
+        // Runtime: Dialogue & Interaction
+        { from: { table: "Room Scenes" }, to: { table: "DialogueSystem.cs" }, type: "flow" },
+        { from: { table: "DialogueSystem.cs" }, to: { table: "DialogueWindow.cs" }, type: "flow" },
+        { from: { table: "DialogueSystem.cs" }, to: { table: "InteractionLayerManager.cs" }, type: "flow" },
+        { from: { table: "MouseAreaRoom.cs" }, to: { table: "InteractionLayerManager.cs" }, type: "read" },
+
+        // Runtime: Audio
+        { from: { table: "MusicController.cs" }, to: { table: "MidiPlayer.gd" }, type: "flow" }
+    ]
+};
+
+
+// ===================================================================================
+//  RENDERING LOGIC
+// ===================================================================================
+function initializeCanvas(canvasId, schema) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const transformContainer = canvas.querySelector('.transform-container');
+    const svg = canvas.querySelector('.connections');
+    let state = { scale: 0.6, panX: 20, panY: 20, isPanning: false, lastMouse: { x: 0, y: 0 } };
+
+    function render() {
+        if (!transformContainer || !svg) return;
+        transformContainer.innerHTML = '';
+        transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        
+        schema.tables.forEach(table => {
+            const node = document.createElement('div');
+            node.id = `${canvasId}-${table.id}`;
+            node.classList.add('node', `${table.nodeType}-node`);
+            node.style.left = `${table.pos.x}px`;
+            node.style.top = `${table.pos.y}px`;
+
+            const header = document.createElement('h3');
+            const pathSpan = table.path ? `<span class="path">${table.path}</span>` : '';
+            header.innerHTML = `${table.name}${pathSpan}`;
+
+            const list = document.createElement('ul');
+            list.innerHTML = table.columns.map(col => {
+                const colName = typeof col === 'string' ? col : col.name;
+                const colType = typeof col === 'string' ? '' : col.type;
+                const colId = colName.replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                return `<li id="${canvasId}-${table.id}-${colId}"><span class="col-name">${colName}</span>${colType ? `<span class="col-type">${colType}</span>` : ''}</li>`;
+            }).join('');
+            
+            if (table.icon) {
+                const iconDisplay = document.createElement('div');
+                iconDisplay.className = 'icon-display';
+                iconDisplay.textContent = table.icon;
+                node.appendChild(iconDisplay);
+            }
+
+            node.appendChild(header);
+            node.appendChild(list);
+            transformContainer.appendChild(node);
+        });
+        updateConnections();
+    }
+    
+    function getElementPortPosition(elId) {
+        const el = document.getElementById(elId);
+        if (!el) return null;
+        const parentNode = el.closest('.node');
+        if (!parentNode) return null;
+        const isNodeConnection = el.classList.contains('node');
+        
+        const parentRect = parentNode.getBoundingClientRect();
+        const elRect = isNodeConnection ? parentRect : el.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const y = isNodeConnection ? (parentRect.top - canvasRect.top + parentRect.height / 2) : (elRect.top - canvasRect.top + elRect.height / 2);
+        const leftX = (parentRect.left - canvasRect.left);
+        const rightX = (parentRect.right - canvasRect.top);
+
+        return { left: {x: leftX, y: y}, right: {x: rightX, y: y} };
+    }
+
+    function updateConnections() {
+        if (!svg) return;
+        svg.innerHTML = `<defs>
+            <marker id="arrowhead-read-${canvasId}" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7283" /></marker>
+            <marker id="arrowhead-write-${canvasId}" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto"><polygon points="0 0, 12 4.5, 0 9" fill="#86efac" /></marker>
+            <marker id="arrowhead-flow-${canvasId}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9ca3af" /></marker>
+        </defs>`;
+        
+        const idMap = new Map(schema.tables.map(t => [t.name, t.id]));
+
+        schema.relationships.forEach(rel => {
+            const fromId = idMap.get(rel.from.table);
+            const toId = idMap.get(rel.to.table);
+            if(!fromId || !toId) return;
+
+            let fromElId = `${canvasId}-${fromId}`;
+            if (rel.from.column) fromElId += `-${(typeof rel.from.column === 'string' ? rel.from.column : rel.from.column.name).replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+            if (!document.getElementById(fromElId)) fromElId = `${canvasId}-${fromId}`;
+
+            let toElId = `${canvasId}-${toId}`;
+            if (rel.to.column) toElId += `-${(typeof rel.to.column === 'string' ? rel.to.column : rel.to.column.name).replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+            if (!document.getElementById(toElId)) toElId = `${canvasId}-${toId}`;
+
+            const fromPorts = getElementPortPosition(fromElId);
+            const toPorts = getElementPortPosition(toElId);
+            if (!fromPorts || !toPorts) return;
+
+            const fromPos = toPorts.right.x < fromPorts.left.x ? fromPorts.left : fromPorts.right;
+            const toPos = toPorts.right.x < fromPorts.left.x ? toPorts.right : toPorts.left;
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', fromPos.x); line.setAttribute('y1', fromPos.y);
+            line.setAttribute('x2', toPos.x); line.setAttribute('y2', toPos.y);
+
+            const type = rel.type || 'read';
+            if (type === 'write') {
+                line.setAttribute('stroke', '#86efac'); line.setAttribute('stroke-width', 3); line.setAttribute('marker-end', `url(#arrowhead-write-${canvasId})`);
+            } else if (type === 'flow') {
+                line.setAttribute('stroke', '#9ca3af'); line.setAttribute('stroke-width', 2); line.setAttribute('stroke-dasharray', `6,6`); line.setAttribute('marker-end', `url(#arrowhead-flow-${canvasId})`);
+            } else {
+                line.setAttribute('stroke', '#6b7283'); line.setAttribute('stroke-width', 2); line.setAttribute('marker-end', `url(#arrowhead-read-${canvasId})`);
+            }
+            svg.appendChild(line);
+        });
+    }
+
+    let activeNode = null, offset = { x: 0, y: 0 };
+    canvas.addEventListener('mousedown', (e) => {
+        const targetNode = e.target.closest('.node');
+        if (targetNode) {
+            activeNode = targetNode;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (!tableData) return;
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            offset.x = mouseX - tableData.pos.x;
+            offset.y = mouseY - tableData.pos.y;
+            activeNode.style.zIndex = 11;
+        } else {
+            state.isPanning = true;
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (activeNode) {
+            e.preventDefault();
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (tableData) {
+                tableData.pos.x = mouseX - offset.x;
+                tableData.pos.y = mouseY - offset.y;
+                activeNode.style.left = `${tableData.pos.x}px`;
+                activeNode.style.top = `${tableData.pos.y}px`;
+                updateConnections();
+            }
+        } else if (state.isPanning) {
+            e.preventDefault();
+            const dx = e.clientX - state.lastMouse.x;
+            const dy = e.clientY - state.lastMouse.y;
+            state.panX += dx;
+            state.panY += dy;
+            transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+            updateConnections();
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (activeNode) { activeNode.style.zIndex = 10; activeNode = null; }
+        state.isPanning = false;
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const oldScale = state.scale;
+        const zoomFactor = 1.1;
+        state.scale *= e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+        state.scale = Math.max(0.1, Math.min(2.5, state.scale));
+        state.panX = mouseX - (mouseX - state.panX) * (state.scale / oldScale);
+        state.panY = mouseY - (mouseY - state.panY) * (state.scale / oldScale);
+        render();
+    });
+
+    render();
+    return { render, updateConnections };
+}
+
+// Initialize the side canvases with empty schemas
+initializeCanvas('canvas-legacy', { tables: [], relationships: [] });
+initializeCanvas('canvas-future', { tables: [], relationships: [] });
+
+// Initialize the main center canvas with all the combined data
+const mainCanvas = initializeCanvas('canvas-engine', schemaCombined);
+
+document.querySelectorAll('.splitter').forEach(splitter => {
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const prevPanel = splitter.previousElementSibling;
+        const startX = e.clientX;
+        const initialPrevWidth = prevPanel.getBoundingClientRect().width;
+        
+        const onMouseMove = (moveEvent) => {
+            let newPrevWidth = initialPrevWidth + (moveEvent.clientX - startX);
+            const MIN_WIDTH = 50; // Allow side panels to be smaller
+            if (newPrevWidth < MIN_WIDTH) newPrevWidth = MIN_WIDTH;
+            prevPanel.style.flex = `0 0 ${newPrevWidth}px`;
+            mainCanvas.render();
+        };
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+});
+
+window.addEventListener('resize', () => {
+    mainCanvas.render();
+});
+
+// Initial full render
+window.addEventListener('load', () => {
+    mainCanvas.render();
+});
+</script>
+
+</body>
+</html>

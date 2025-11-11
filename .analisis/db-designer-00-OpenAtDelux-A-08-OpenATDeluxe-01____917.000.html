@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OpenATDeluxe Architecture</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #111827; color: #d1d5db; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .header { background-color: #1f2937; padding: 1rem 2rem; border-bottom: 1px solid #374151; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    h1 { color: white; margin: 0; }
+    .controls { display: flex; align-items: center; gap: 20px; }
+    .legend { display: flex; gap: 20px; font-size: 12px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .main-container { display: flex; flex-grow: 1; }
+    .panel { min-width: 150px; height: 100%; display: flex; flex-direction: column; position: relative; }
+    .panel:nth-child(1) { flex: 0 0 150px; } /* Empty Left Panel */
+    .panel:nth-child(3) { flex: 1 1 100%; }   /* Center Panel */
+    .panel:nth-child(5) { flex: 0 0 150px; } /* Empty Right Panel */
+    .splitter { width: 6px; background-color: #374151; cursor: col-resize; flex-shrink: 0; z-index: 100; }
+    .splitter:hover { background-color: #4b5563; }
+    .panel-header { padding: 1rem; text-align: center; border-bottom: 1px solid #374151; background-color: #1f2937; }
+    .panel-header h2 { margin: 0; font-size: 1.5rem; }
+    .header-legacy { color: #fca5a5; }
+    .header-engine { color: #86efac; }
+    .header-future { color: #c4b5fd; }
+    .canvas { position: relative; width: 100%; flex-grow: 1; overflow: hidden; cursor: grab; }
+    .canvas:active { cursor: grabbing; }
+    .connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .transform-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; z-index: 2; }
+    .node { position: absolute; border: 3px solid #4b5563; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); font-family: monospace; width: 280px; cursor: move; z-index: 10; user-select: none; padding-top: 30px; }
+    .node h3 { padding: 8px 12px 8px 12px; margin: 0; border-bottom: 1px solid rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; font-size: 14px; color: white; word-break: break-all; }
+    .node h3 .path { font-size: 0.8em; color: #9ca3af; display: block; font-weight: normal; }
+    .node ul { list-style: none; padding: 0; margin: 0; }
+    .node li { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; position: relative; }
+    .node li:last-child { border-bottom: none; }
+    .node .col-name { font-weight: 500; }
+    .node .col-type { margin-left: auto; color: #9ca3af; }
+    .db-node { background-color: rgba(196, 181, 253, 0.15); border-color: #a78bfa; }
+    .db-node h3 { background-color: #8b5cf6; }
+    .ui-node { background-color: rgba(191, 219, 254, 0.15); border-color: #60a5fa; }
+    .ui-node h3 { background-color: #3b82f6; }
+    .code-node { background-color: rgba(134, 239, 172, 0.1); border-color: #4ade80; }
+    .code-node h3 { background-color: #22c55e; }
+    .service-node { background-color: rgba(252, 165, 165, 0.1); border-color: #f87171; }
+    .service-node h3 { background-color: #ef4444; }
+    .icon-display { position: absolute; top: -32px; left: 50%; transform: translateX(-50%); font-size: 64px; z-index: 12; pointer-events: none; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Full Stack Analysis - OpenATDeluxe Architecture</h1>
+    <div class="controls">
+        <div class="legend">
+             <div class="legend-item"><svg width="10" height="10" style="background:#3b82f6; border-radius:3px;"></svg> UI</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#22c55e; border-radius:3px;"></svg> Code</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#8b5cf6; border-radius:3px;"></svg> Data/Schema</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#ef4444; border-radius:3px;"></svg> Service</div>
+        </div>
+    </div>
+</div>
+
+<div class="main-container">
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-legacy">Legacy ATD</h2></div>
+        <div id="canvas-legacy" class="canvas"><svg id="connections-legacy" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-engine">OpenATDeluxe Engine</h2></div>
+        <div id="canvas-engine" class="canvas"><svg id="connections-engine" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-future">Future Gameplay</h2></div>
+        <div id="canvas-future" class="canvas"><svg id="connections-future" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+</div>
+
+<script>
+// ===================================================================================
+//
+//  MASTER DATA SOURCES
+//
+// ===================================================================================
+/*
+    ARCHITECTURAL INSIGHTS FOR FUTURE AI ANALYSIS:
+    This file provides a comprehensive architectural visualization of the OpenATDeluxe game engine, a remake of "Airline Tycoon Deluxe" built on Godot using C#. The architecture is defined by a distinct separation between the modern game engine and a legacy asset ingestion pipeline.
+
+    **Overall Architectural Philosophy:**
+    The project's design is pragmatic, leveraging the strengths of the Godot engine's scene system while solving a critical asset dependency issue. Due to copyright, original game assets cannot be redistributed. The solution is a custom **Build Manager**, a C# tool integrated into the Godot editor (`DockInterface.cs`, `ManageTool.cs`). This tool requires the user to provide a path to their installation of the original "Airline Tycoon Deluxe." It then extracts, decompress, and converts proprietary legacy formats (`.gli`, `.dat`) into modern, engine-readable resources. This approach keeps the open-source codebase legally clean while allowing for a faithful remake.
+
+    **Key File Types and Their Roles:**
+    - **C# Scripts (`.cs`):** The core of the project's logic. This includes both the in-editor **Build Manager** toolset and the runtime game logic attached to scenes (e.g., `Staircase.cs`, `MouseArea.cs`). The `.csproj` and `.sln` files confirm the use of the .NET ecosystem within Godot.
+    - **Godot Scenes (`.tscn`):** These text-based files define the hierarchy and properties of game objects and UI elements. They are the visual and structural backbone of the game, linking nodes to their corresponding C# or GDScript logic files.
+    - **Godot Resources (`.tres`):** These files store serialized Godot resource objects, such as materials (`cutoutPreMult.tres`), audio bus layouts (`default_bus_layout.tres`), and font configurations (`BlockFont.tres`). They are a way to save and reuse specific engine assets.
+    - **Project & Config Files (`.godot`, `.cfg`):** The `project.godot` file is the heart of the Godot project, defining autoloads, input maps, display settings, and the main scene to launch. `.cfg` files like `export_presets.cfg` and `settings.cfg` provide additional configuration for building the game and user-specific paths.
+    - **GDScript (`.gd`):** While C# is dominant, the project utilizes GDScript for a custom MIDI player addon. This demonstrates a polyglot approach, using the best tool for the job—GDScript is excellent for rapid tool and addon development within the Godot ecosystem.
+    - **Legacy Formats (`FORMATS.md`):** This markdown file is a critical piece of documentation, detailing the reverse-engineered file formats of the original game, such as `.gli` (graphics) and `.mcf` (fonts). It is the blueprint for the asset ingestion pipeline.
+    - **Utility Scripts (`.py`):** The `xtRLE.py` script is a standalone utility for decompressing and decrypting data from the original game's `.dat` files, likely a precursor or helper to the main C# import process.
+    - **Asset Files (`.png`, `.sf2`, `.ttf`, `.csv`):** These are the raw or converted assets. `.png` files are standard textures, `.ttf` files are fonts, `.sf2` (SoundFont) provides instruments for the MIDI player, and `localization.csv` contains all in-game text for multiple languages.
+
+    **The Data Flow Pipeline:**
+    1.  **Initial Setup:** A developer or user first runs the **Build Manager** tool from within the Godot editor. They provide the path to their original "Airline Tycoon Deluxe" installation.
+    2.  **Asset Extraction:** The `DockInterface.cs` tool initiates a process that reads legacy files (`.gli`, `.dat`). It uses documented logic (`FORMATS.md`) and helper scripts (`xtRLE.py`) to extract raw data.
+    3.  **Asset Conversion:** The raw data is converted into Godot-native formats. Images are saved as Godot resources (`.res`), and data is likely converted to `.csv` or directly into Godot resources. This step populates the `res://Images` directory, which is intentionally left empty in the repository.
+    4.  **Game Execution:** The game is launched via the `project.godot` file. Godot's engine loads the main scene (`load.tscn`).
+    5.  **Runtime Operation:** As scenes are loaded, their attached C# scripts are instantiated. The MIDI player addon (`MidiPlayer.gd`) loads the `Aspirin-Stereo.sf2` soundfont to play background music. UI elements fetch strings from the `localization.csv` translations. Game logic scripts respond to player input and manage the game state.
+
+    This two-stage process (build-time asset conversion followed by runtime execution) is the defining characteristic of the OpenATDeluxe architecture.
+*/
+
+const schemaCombined = {
+    tables: [
+        // Legacy Column
+        { id: 1, name: "Airline Tycoon Deluxe", path: "(User's Local Installation)", nodeType: "service", pos: { x: 50, y: 50 }, icon: "💿", columns: [ { name: "Proprietary Game Files" } ] },
+        { id: 2, name: ".gli Graphics Archive", path: "(Legacy Format)", nodeType: "db", pos: { x: 50, y: 350 }, icon: "📦", columns: [ { name: "Header (File Info)" }, { name: "Image Data (RGB565)" } ] },
+        { id: 3, name: ".dat / .csv Data Files", path: "(Legacy Format)", nodeType: "db", pos: { x: 50, y: 650 }, icon: "📦", columns: [ { name: "xtRLE Compressed Data" } ] },
+        { id: 4, name: "Other Legacy Formats", path: "(Legacy Format)", nodeType: "db", pos: { x: 50, y: 950 }, icon: "📦", columns: [ { name: ".glj (Unknown Graphics)" }, { name: ".pol (Animations)" }, { name: ".mcf (Font Data)" }, { name: ".smk (Smacker Video)" } ] },
+        { id: 5, name: "FORMATS.md", path: "/FORMATS.md", nodeType: "db", pos: { x: 50, y: 1250 }, icon: "📝", columns: [ { name: "Reverse-Engineered Specs" } ] },
+        { id: 6, name: "xtRLE.py", path: "/xtRLE.py", nodeType: "code", pos: { x: 50, y: 1550 }, icon: "🐍", columns: [ { name: "decompress(file)" }, { name: "decrypt(data, size)" } ] },
+
+        // Engine Column
+        // UI
+        { id: 101, name: "Build Manager", path: "addons/builder/dock.tscn", nodeType: "ui", pos: { x: 450, y: 50 }, icon: "🛠️", columns: [ { name: "GamePath (LineEdit)" }, { name: "ExtractImages (Button)" }, { name: "PrepareBuild (Button)" } ] },
+        { id: 102, name: "DialogueSystem.tscn", path: "Prefabs/", nodeType: "ui", pos: { x: 450, y: 350 }, icon: "💬", columns: [ { name: "PlayerIcon (Sprite)" }, { name: "Speechbubble (Instance)" } ] },
+        { id: 103, name: "Speechbubble.tscn", path: "Prefabs/Speech/", nodeType: "ui", pos: { x: 450, y: 650 }, icon: "💭", columns: [ { name: "NinePatchRect (Texture)" }, { name: "Content (VBoxContainer)" } ] },
+        { id: 104, name: "MidiPlayer Node", path: "addons/midi/MidiPlayer.tscn", nodeType: "ui", pos: { x: 450, y: 950 }, icon: "🎹", columns: [ { name: "file: String" }, { name: "soundfont: String" }, { name: "playing: bool" } ] },
+
+        // Code
+        { id: 121, name: "ManageTool.cs", path: "addons/builder/", nodeType: "code", pos: { x: 850, y: 50 }, icon: " C# ", columns: [ { name: "_EnterTree() -> AddControlToDock()" } ] },
+        { id: 122, name: "DockInterface.cs", path: "addons/builder/", nodeType: "code", pos: { x: 850, y: 350 }, icon: " C# ", columns: [ { name: "ImportImages()" }, { name: "PrepareBuild()" }, { name: "ATDGameLoader.IsOriginalGamePath()" } ] },
+        { id: 123, name: "DialogueSystem.cs", path: "src/Speech/", nodeType: "code", pos: { x: 850, y: 650 }, icon: " C# ", columns: [ { name: "(Handles dialogue logic)" } ] },
+        { id: 124, name: "MidiPlayer.gd", path: "addons/midi/", nodeType: "code", pos: { x: 850, y: 950 }, icon: " GD ", columns: [ { name: "_process(delta)" }, { name: "play()" }, { name: "_prepare_to_play()" } ] },
+        { id: 125, name: "Bank.gd", path: "addons/midi/", nodeType: "code", pos: { x: 850, y: 1250 }, icon: " GD ", columns: [ { name: "read_soundfont(sf)" }, { name: "get_preset(program)" } ] },
+        { id: 126, name: "SoundFont.gd", path: "addons/midi/", nodeType: "code", pos: { x: 850, y: 1550 }, icon: " GD ", columns: [ { name: "read_file(path)" } ] },
+        { id: 127, name: "Game Logic Scripts", path: "src/", nodeType: "code", pos: { x: 850, y: 1850 }, icon: " C# ", columns: [ { name: "Staircase.cs" }, { name: "MouseArea.cs" }, { name: "MouseAreaRoom.cs" } ] },
+
+        // Data/Schema
+        { id: 141, name: "project.godot", path: "/", nodeType: "db", pos: { x: 1250, y: 50 }, icon: "⚙️", columns: [ { name: "config/name = OpenATD" }, { name: "run/main_scene" }, { name: "application/config/atd_path" }, { name: "editor_plugins/enabled" } ] },
+        { id: 142, name: "plugin.cfg", path: "addons/builder/", nodeType: "db", pos: { x: 1250, y: 350 }, icon: "⚙️", columns: [ { name: "name=Build Manager" }, { name: "script=ManageTool.cs" } ] },
+        { id: 143, name: "localization.csv", path: "/localization/", nodeType: "db", pos: { x: 1250, y: 650 }, icon: "🌐", columns: [ { name: "id;pt_BR;en;fr;it;..." }, { name: "Bank>101;..." }, { name: "Makl>80;..." } ] },
+        { id: 144, name: "Godot Resources", path: "*.tres", nodeType: "db", pos: { x: 1250, y: 950 }, icon: "📄", columns: [ { name: "default_bus_layout.tres" }, { name: "default_env.tres" }, { name: "BlockFont.tres" } ] },
+        
+        // Services/Assets
+        { id: 161, name: "Aspirin-Stereo.sf2", path: "sound/", nodeType: "service", pos: { x: 1650, y: 950 }, icon: "🎶", columns: [ { name: "SoundFont Instrument Data" } ] },
+        { id: 162, name: "KOMTXTI_.ttf", path: "fonts/", nodeType: "service", pos: { x: 1650, y: 1250 }, icon: "🔤", columns: [ { name: "Font Glyph Data" } ] },
+        { id: 163, name: "Converted Assets", path: "res://Images/", nodeType: "service", pos: { x: 1650, y: 350 }, icon: "🖼️", columns: [ { name: "Image resources (.res)" }, { name: "(Generated by Build Manager)" } ] },
+
+        // Future Column
+        { id: 201, name: "Core Gameplay Loop", path: "(To be implemented)", nodeType: "code", pos: { x: 2050, y: 50 }, icon: "🔄", columns: [ { name: "Player Management" }, { name: "Airline Simulation Logic" }, { name: "Route Management" } ] },
+        { id: 202, name: "Aircraft Management", path: "(To be implemented)", nodeType: "code", pos: { x: 2050, y: 350 }, icon: "✈️", columns: [ { name: "Buying/Selling Planes" }, { name: "Maintenance Logic" }, { name: "Scheduling Flights" } ] },
+        { id: 203, name: "Economic System", path: "(To be implemented)", nodeType: "code", pos: { x: 2050, y: 650 }, icon: "💰", columns: [ { name: "Stock Market" }, { name: "Loans and Banking" }, { name: "Passenger Demand" } ] },
+        { id: 204, name: "AI Opponents", path: "(To be implemented)", nodeType: "code", pos: { x: 2050, y: 950 }, icon: "🤖", columns: [ { name: "Decision Making" }, { name: "Sabotage Actions" } ] }
+    ],
+    relationships: [
+        // Legacy Ingestion Flow
+        { from: { table: "Airline Tycoon Deluxe" }, to: { table: ".gli Graphics Archive" } },
+        { from: { table: "Airline Tycoon Deluxe" }, to: { table: ".dat / .csv Data Files" } },
+        { from: { table: "Airline Tycoon Deluxe" }, to: { table: "Other Legacy Formats" } },
+        { from: { table: "xtRLE.py" }, to: { table: ".dat / .csv Data Files" }, type: "read" },
+        { from: { table: ".gli Graphics Archive" }, to: { table: "FORMATS.md" }, type: "read" },
+        { from: { table: "DockInterface.cs" }, to: { table: "Airline Tycoon Deluxe" }, type: "read" },
+        { from: { table: "DockInterface.cs" }, to: { table: "xtRLE.py" }, type: "flow" },
+
+        // Build Manager Flow
+        { from: { table: "project.godot" }, to: { table: "plugin.cfg" }, type: "read" },
+        { from: { table: "plugin.cfg" }, to: { table: "ManageTool.cs" }, type: "flow" },
+        { from: { table: "ManageTool.cs" }, to: { table: "Build Manager" }, type: "flow" },
+        { from: { table: "Build Manager" }, to: { table: "DockInterface.cs" }, type: "flow" },
+        { from: { table: "DockInterface.cs" }, to: { table: "project.godot" }, type: "write" },
+        { from: { table: "DockInterface.cs" }, to: { table: "Converted Assets" }, type: "write" },
+
+        // MIDI Player Flow
+        { from: { table: "MidiPlayer Node" }, to: { table: "MidiPlayer.gd" }, type: "flow" },
+        { from: { table: "MidiPlayer.gd" }, to: { table: "Bank.gd" }, type: "flow" },
+        { from: { table: "Bank.gd" }, to: { table: "SoundFont.gd" }, type: "flow" },
+        { from: { table: "SoundFont.gd" }, to: { table: "Aspirin-Stereo.sf2" }, type: "read" },
+
+        // UI and Logic Flow
+        { from: { table: "DialogueSystem.tscn" }, to: { table: "DialogueSystem.cs" }, type: "flow" },
+        { from: { table: "DialogueSystem.tscn" }, to: { table: "Speechbubble.tscn" }, type: "flow" },
+        { from: { table: "Speechbubble.tscn" }, to: { table: "localization.csv" }, type: "read" },
+        
+        // Font Loading
+        { from: { table: "Godot Resources" }, to: { table: "KOMTXTI_.ttf" }, type: "read" },
+        
+        // Future Gameplay Connections
+        { from: { table: "Game Logic Scripts" }, to: { table: "Core Gameplay Loop" }, type: "flow" },
+        { from: { table: "Core Gameplay Loop" }, to: { table: "Aircraft Management" }, type: "flow" },
+        { from: { table: "Core Gameplay Loop" }, to: { table: "Economic System" }, type: "flow" },
+        { from: { table: "Core Gameplay Loop" }, to: { table: "AI Opponents" }, type: "flow" }
+    ]
+};
+
+
+// ===================================================================================
+//  RENDERING LOGIC
+// ===================================================================================
+function initializeCanvas(canvasId, schema) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const transformContainer = canvas.querySelector('.transform-container');
+    const svg = canvas.querySelector('.connections');
+    let state = { scale: 0.6, panX: 20, panY: 20, isPanning: false, lastMouse: { x: 0, y: 0 } };
+
+    function render() {
+        if (!transformContainer || !svg) return;
+        transformContainer.innerHTML = '';
+        transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        
+        schema.tables.forEach(table => {
+            const node = document.createElement('div');
+            node.id = `${canvasId}-${table.id}`;
+            node.classList.add('node', `${table.nodeType}-node`);
+            node.style.left = `${table.pos.x}px`;
+            node.style.top = `${table.pos.y}px`;
+
+            const header = document.createElement('h3');
+            const pathSpan = table.path ? `<span class="path">${table.path}</span>` : '';
+            header.innerHTML = `${table.name}${pathSpan}`;
+
+            const list = document.createElement('ul');
+            list.innerHTML = table.columns.map(col => {
+                const colName = typeof col === 'string' ? col : col.name;
+                const colType = typeof col === 'string' ? '' : col.type;
+                const colId = colName.replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                return `<li id="${canvasId}-${table.id}-${colId}"><span class="col-name">${colName}</span>${colType ? `<span class="col-type">${colType}</span>` : ''}</li>`;
+            }).join('');
+            
+            if (table.icon) {
+                const iconDisplay = document.createElement('div');
+                iconDisplay.className = 'icon-display';
+                iconDisplay.textContent = table.icon;
+                node.appendChild(iconDisplay);
+            }
+
+            node.appendChild(header);
+            node.appendChild(list);
+            transformContainer.appendChild(node);
+        });
+        updateConnections();
+    }
+    
+    function getElementPortPosition(elId) {
+        const el = document.getElementById(elId);
+        if (!el) return null;
+        const parentNode = el.closest('.node');
+        if (!parentNode) return null;
+        const isNodeConnection = el.classList.contains('node');
+        
+        const parentRect = parentNode.getBoundingClientRect();
+        const elRect = isNodeConnection ? parentRect : el.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const y = isNodeConnection ? (parentRect.top - canvasRect.top + parentRect.height / 2) : (elRect.top - canvasRect.top + elRect.height / 2);
+        const leftX = (parentRect.left - canvasRect.left);
+        const rightX = (parentRect.right - canvasRect.top);
+
+        return { left: {x: leftX, y: y}, right: {x: rightX, y: y} };
+    }
+
+    function updateConnections() {
+        if (!svg) return;
+        svg.innerHTML = `<defs>
+            <marker id="arrowhead-read-${canvasId}" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7283" /></marker>
+            <marker id="arrowhead-write-${canvasId}" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto"><polygon points="0 0, 12 4.5, 0 9" fill="#86efac" /></marker>
+            <marker id="arrowhead-flow-${canvasId}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9ca3af" /></marker>
+        </defs>`;
+        
+        const idMap = new Map(schema.tables.map(t => [t.name, t.id]));
+
+        schema.relationships.forEach(rel => {
+            const fromId = idMap.get(rel.from.table);
+            const toId = idMap.get(rel.to.table);
+            if(!fromId || !toId) return;
+
+            let fromElId = `${canvasId}-${fromId}`;
+            if (rel.from.column) fromElId += `-${(typeof rel.from.column === 'string' ? rel.from.column : rel.from.column.name).replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+            if (!document.getElementById(fromElId)) fromElId = `${canvasId}-${fromId}`;
+
+            let toElId = `${canvasId}-${toId}`;
+            if (rel.to.column) toElId += `-${(typeof rel.to.column === 'string' ? rel.to.column : rel.to.column.name).replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+            if (!document.getElementById(toElId)) toElId = `${canvasId}-${toId}`;
+
+            const fromPorts = getElementPortPosition(fromElId);
+            const toPorts = getElementPortPosition(toElId);
+            if (!fromPorts || !toPorts) return;
+
+            const fromPos = toPorts.right.x < fromPorts.left.x ? fromPorts.left : fromPorts.right;
+            const toPos = toPorts.right.x < fromPorts.left.x ? toPorts.right : toPorts.left;
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', fromPos.x); line.setAttribute('y1', fromPos.y);
+            line.setAttribute('x2', toPos.x); line.setAttribute('y2', toPos.y);
+
+            const type = rel.type || 'read';
+            if (type === 'write') {
+                line.setAttribute('stroke', '#86efac'); line.setAttribute('stroke-width', 3); line.setAttribute('marker-end', `url(#arrowhead-write-${canvasId})`);
+            } else if (type === 'flow') {
+                line.setAttribute('stroke', '#9ca3af'); line.setAttribute('stroke-width', 2); line.setAttribute('stroke-dasharray', `6,6`); line.setAttribute('marker-end', `url(#arrowhead-flow-${canvasId})`);
+            } else {
+                line.setAttribute('stroke', '#6b7283'); line.setAttribute('stroke-width', 2); line.setAttribute('marker-end', `url(#arrowhead-read-${canvasId})`);
+            }
+            svg.appendChild(line);
+        });
+    }
+
+    let activeNode = null, offset = { x: 0, y: 0 };
+    canvas.addEventListener('mousedown', (e) => {
+        const targetNode = e.target.closest('.node');
+        if (targetNode) {
+            activeNode = targetNode;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (!tableData) return;
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            offset.x = mouseX - tableData.pos.x;
+            offset.y = mouseY - tableData.pos.y;
+            activeNode.style.zIndex = 11;
+        } else {
+            state.isPanning = true;
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (activeNode) {
+            e.preventDefault();
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (tableData) {
+                tableData.pos.x = mouseX - offset.x;
+                tableData.pos.y = mouseY - offset.y;
+                activeNode.style.left = `${tableData.pos.x}px`;
+                activeNode.style.top = `${tableData.pos.y}px`;
+                updateConnections();
+            }
+        } else if (state.isPanning) {
+            e.preventDefault();
+            const dx = e.clientX - state.lastMouse.x;
+            const dy = e.clientY - state.lastMouse.y;
+            state.panX += dx;
+            state.panY += dy;
+            transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+            updateConnections();
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (activeNode) { activeNode.style.zIndex = 10; activeNode = null; }
+        state.isPanning = false;
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const oldScale = state.scale;
+        const zoomFactor = 1.1;
+        state.scale *= e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+        state.scale = Math.max(0.1, Math.min(2.5, state.scale));
+        state.panX = mouseX - (mouseX - state.panX) * (state.scale / oldScale);
+        state.panY = mouseY - (mouseY - state.panY) * (state.scale / oldScale);
+        render();
+    });
+
+    render();
+    return { render, updateConnections };
+}
+
+const mainCanvas = initializeCanvas('canvas-engine', schemaCombined);
+
+document.querySelectorAll('.splitter').forEach(splitter => {
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const prevPanel = splitter.previousElementSibling;
+        const startX = e.clientX;
+        const initialPrevWidth = prevPanel.getBoundingClientRect().width;
+        
+        const onMouseMove = (moveEvent) => {
+            let newPrevWidth = initialPrevWidth + (moveEvent.clientX - startX);
+            const MIN_WIDTH = 50; // Allow side panels to be smaller
+            if (newPrevWidth < MIN_WIDTH) newPrevWidth = MIN_WIDTH;
+            prevPanel.style.flex = `0 0 ${newPrevWidth}px`;
+            mainCanvas.render();
+        };
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+});
+
+window.addEventListener('resize', () => {
+    mainCanvas.render();
+});
+
+// Initial full render
+window.addEventListener('load', () => {
+    mainCanvas.render();
+});
+</script>
+
+</body>
+</html>
